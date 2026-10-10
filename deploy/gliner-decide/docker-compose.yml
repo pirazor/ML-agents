@@ -1,0 +1,34 @@
+services:
+  api:
+    build: .
+    image: gliner-decide-api:latest
+    restart: unless-stopped
+    environment:
+      - API_KEY=${API_KEY:?API_KEY must be set in .env}
+    expose:
+      - "7860"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+  caddy:
+    image: public.ecr.aws/docker/library/caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?DOMAIN must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  caddy_data:
+  caddy_config:
