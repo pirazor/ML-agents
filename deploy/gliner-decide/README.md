@@ -28,6 +28,21 @@ your laptop / app ──HTTPS + API key──▶ VPS: Caddy (auto TLS) ──▶
 If the script reports the API is unreachable, check **hPanel → VPS → Security → Firewall**: ports 80 and 443 must be
 allowed (or no firewall rules applied).
 
+### VPS that already runs Traefik (Hostinger "Ubuntu with n8n" template)
+
+That template's Traefik already holds ports 80/443, so `install.sh` (which starts Caddy) would clash with it. Use
+`docker-compose.traefik.yml` instead: it joins Traefik's `n8n_default` network and gets its certificate from Traefik's
+`mytlschallenge` resolver, leaving the n8n project untouched. It needs no image build, so you can paste it as-is into
+**hPanel → VPS → Docker Manager → Compose** (or deploy it through the Hostinger API) with these environment variables:
+
+```
+API_KEY=<long random string>
+API_HOST=gliner.<your-vps-hostname>      # e.g. gliner.srv123456.hstgr.cloud; *.hstgr.cloud subdomains already resolve
+```
+
+The first start installs dependencies and downloads the model into Docker volumes (about 5–10 minutes); after that a
+restart takes under a minute. The container is capped at 4 GB RAM and 1.5 CPUs so it can't starve n8n.
+
 ### Use your own domain (optional)
 
 Add a DNS **A record** (e.g. `api.yourdomain.com`) pointing at the VPS IP. On Hostinger: **hPanel → Domains → DNS / Nameservers**.
@@ -101,4 +116,5 @@ The containers restart automatically after a reboot or crash.
 | `Dockerfile` | CPU-only image with the model weights baked in |
 | `docker-compose.yml` | API + Caddy reverse proxy |
 | `Caddyfile` | HTTPS termination with automatic Let's Encrypt certificates |
+| `docker-compose.traefik.yml` | Alternative for servers that already run Traefik (no build, no Caddy) |
 | `requirements.txt` | Pinned Python dependencies |
