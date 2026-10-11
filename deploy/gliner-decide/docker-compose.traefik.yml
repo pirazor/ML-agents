@@ -1,0 +1,57 @@
+# Variant for a server that already runs Traefik on ports 80/443 (e.g. Hostinger's "Ubuntu with n8n" template).
+# Joins Traefik's network instead of starting Caddy, and needs no image build: it runs the stock Python image,
+# fetches app.py from GitHub at start, and keeps dependencies and model weights in volumes (first start ~5 min,
+# restarts are quick). So it can be deployed by pasting this file alone into Hostinger's Docker Manager / API.
+# Required env: API_KEY, API_HOST. Optional: TRAEFIK_NETWORK (default n8n_default),
+# TRAEFIK_CERTRESOLVER (default mytlschallenge).
+services:
+  api:
+    image: public.ecr.aws/docker/library/python:3.12-slim
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - API_KEY=${API_KEY:?API_KEY must be set}
+      - APP_SRC=https://raw.githubusercontent.com/pirazor/ML-agents/refs/heads/claude/peaceful-gauss-cexx9v/deploy/gliner-decide
+      - PYTHONUSERBASE=/deps
+      - HF_HOME=/hf
+      - PIP_DISABLE_PIP_VERSION_CHECK=1
+      - PIP_ROOT_USER_ACTION=ignore
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        python -c "import os, urllib.request as u; [u.urlretrieve(os.environ['APP_SRC'] + '/' + f, f) for f in ('app.py', 'requirements.txt')]"
+        pip install --user --no-cache-dir -q -r requirements.txt
+        exec python -m uvicorn app:app --host 0.0.0.0 --port 7860
+    volumes:
+      - deps:/deps
+      - hf_cache:/hf
+    # Leave headroom for whatever else runs on the box
+    mem_limit: 4g
+    cpus: 1.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 900s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK:-n8n_default}
+      - traefik.http.routers.gliner-decide.rule=Host(`${API_HOST:?API_HOST must be set}`)
+      - traefik.http.routers.gliner-decide.entrypoints=websecure
+      - traefik.http.routers.gliner-decide.tls=true
+      - traefik.http.routers.gliner-decide.tls.certresolver=${TRAEFIK_CERTRESOLVER:-mytlschallenge}
+      - traefik.http.services.gliner-decide.loadbalancer.server.port=7860
+    networks:
+      - traefik
+
+volumes:
+  deps:
+  hf_cache:
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK:-n8n_default}
+    external: true
